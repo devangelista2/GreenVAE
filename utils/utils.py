@@ -28,3 +28,25 @@ def vae_loss(z_mean, z_log_var, gamma):
 
         return L_rec + gamma * L_KL
     return loss
+
+def get_optimizer(steps_per_epoch, initial_lr=1e-4, halve_epochs=[80, 120, 150]):
+	from tensorflow.keras.optimizers import Adam
+	from tensorflow.keras.optimizers.schedules import PiecewiseConstantDecay
+
+	lr_schedule = PiecewiseConstantDecay([steps_per_epoch * epochs for epochs in halve_epochs], 
+	                                     [initial_lr/(2**i) for i in range(len(halve_at_epochs))])
+	optimizer = Adam(learning_rate=lr_schedule)
+	return optimizer
+
+
+
+
+
+
+
+
+
+
+
+
+
