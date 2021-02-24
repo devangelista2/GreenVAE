@@ -249,11 +249,10 @@ for epoch in range(epochs):
     print('Date: {date}\t'
           'Epoch: [Stage 1][{0}/{1}]\t'
           'Loss: {2:.4f}.'.format(epoch+1, epochs, epoch_loss, date=time.strftime('%Y-%m-%d %H:%M:%S')))
-    print("mse: ", mseloss)
+    print("MSE: ", mseloss)
     if True: #save weights after each epoch
         vae1.save_weights('weights/' + weights_filename)
 
-#vae1.fit([x_train,gamma_in],x_train,epochs=1,callbacks=[GammaCallback()])
 vae1.save_weights('weights/' + weights_filename)
 
 #assert False
