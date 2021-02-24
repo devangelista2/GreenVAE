@@ -7,9 +7,19 @@ from tensorflow.keras.layers import Input, Conv2D, BatchNormalization, ReLU, Den
 import tensorflow.keras.backend as K
 
 from utils import utils, load_data, evaluate
+import two_stage
+
+# Load data
+data = "cifar10" # or celeba
+if data == "cifar10":
+    x_train, x_test = load_data.load_cifar10()
+elif data == "celeba":
+    x_train, x_test = load_data.load_celeba()
+else:
+    print('Dataset not found.')
 
 # Parameters
-input_dim = (32, 32, 3)
+input_dim = x_train[0].shape
 latent_dim = 128
 
 e_layers = 4
@@ -21,9 +31,15 @@ batch_size = 100
 
 gamma = 0.024
 
-# Load data
-x_train, x_test = load_data.load_cifar10()
 
+# Loss function
+def vae_loss(x_true, x_pred, z_mean, z_log_var):
+    
+    L_rec = utils.recon(x_true, x_pred)
+    L_KL = utils.KL(z_mean, z_log_var)(x_true, x_pred)
+
+    return L_rec + gamma * L_KL
+    return loss
 
 # Model Architecture
 # ENCODER
@@ -41,7 +57,7 @@ h = Flatten()(h)
 
 z_mean = Dense(latent_dim)(h)
 z_log_var = Dense(latent_dim)(h)
-z = Lambda(sampling)([z_mean, z_log_var])
+z = Lambda(utils.sampling)([z_mean, z_log_var])
 
 encoder = Model(x, [z, z_mean, z_log_var])
 
@@ -67,15 +83,16 @@ decoder = Model(z_in, x_decoded)
 # VAE
 x_recon = decoder(z)
 vae = Model(x, x_recon)
-vae.add_loss(utils.vae_loss(z_mean, z_log_var, gamma))
+vae.add_loss(vae_loss(x, x_recon, z_mean, z_log_var))
 
 # Compile model
-optimizer = get_optimizer(x_train.shape[0] // batch_size)
+optimizer = utils.get_optimizer(x_train.shape[0] // batch_size)
 vae.compile(optimizer=optimizer, loss=None, metrics=['mse', utils.KL(z_mean, z_log_var)])
 
 
 # Fit model
 hist = vae.fit(x_train, x_train, batch_size=batch_size, epochs=epochs, verbose=1)
+vae.save_weights('saved_weights/vanillaVAE_' + data +'.h5')
 
 
 ########################################################################################################################
@@ -96,103 +113,36 @@ if SHOW_METRICS:
     x_recon = vae.predict(x_train)
     print('We lost ', evaluate.loss_variance(x_test, x_recon), 'Variance of the original data')
 
+SHOW_GEN_FID = False
+if SHOW_GEN_FID:
+    z = np.random.normal(0, 1, (10000, latent_dim))
+    x_gen = decoder.predict(z)
 
+    gen_fid = evaluate.get_fid(x_test[:10000], x_gen)
+    print('GEN FID:', gen_fid)
 
+SHOW_REC_FID = False
+if SHOW_REC_FID:
+    x_recon = vae.predict(x_train[:10000])
+
+    rec_fid = evaluate.get_fid(x_test[:10000], x_recon)
+    print('REC FID:', rec_fid)
+
+SECOND_STAGE = False
+if SECOND_STAGE:
+    z_train = encoder.predict(x_train)[0]
+    z_test  = encoder.predict(x_test)[0]
+
+    second_vae, second_encoder, second_decoder = two_stage.get_second_stage(latent_dim)
+
+    # Compile model
+    optimizer = utils.get_optimizer(z_train.shape[0] // batch_size, initial_lr=1e-3)
+    second_vae.compile(optimizer=optimizer, loss=None, metrics=[utils.cos_sim])
 
 
 
 
 """
-
-# Second Stage VAE
-from keras.layers import Concatenate
-SECOND_TRAIN = False
-# Loss
-def second_stage_loss(u_mean, u_log_var):
-    def loss(x_true, x_pred):
-        import tensorflow as tf
-        normalize_z = tf.nn.l2_normalize(x_true, 1)
-        normalize_z_hat = tf.nn.l2_normalize(x_pred, 1)
-        cos_similarity = - K.sum(normalize_z * normalize_z_hat, axis=-1)
-        L_KL = 0.5 * K.sum(K.square(u_mean) + K.exp(u_log_var) - 1 - u_log_var, axis=-1)
-
-        return K.mean(cos_similarity + .007 * L_KL)
-    return loss
-
-def second_recon(x_true, x_pred):
-    return K.mean(0.5 * K.sum(K.square(x_true - x_pred), axis=-1))
-
-def second_KL(z_mean, z_log_var):
-    def kl(x_true, x_pred):
-        return K.mean(0.5 * K.sum(K.square(z_mean) + K.exp(z_log_var) - 1 - z_log_var, axis=-1))
-    return kl
-
-def cos_sim(x_true, x_pred):
-    import tensorflow as tf
-    normalize_z = tf.nn.l2_normalize(x_true, 1)
-    normalize_z_hat = tf.nn.l2_normalize(x_pred, 1)
-    return K.mean(K.sum(normalize_z * normalize_z_hat, axis=-1))
-
-def second_stage_sampling(args):
-    u_mean, u_log_var = args
-    eps = K.random_normal(shape=(batch_size, latent_dim))
-
-    return u_mean + eps * K.exp(0.5 * u_log_var)
-
-# Encoder
-intermediate_dim = 3000
-
-z = Input(shape=(latent_dim, ))
-
-h = Dense(intermediate_dim, activation='relu')(z)
-h = Dense(intermediate_dim, activation='relu')(h)
-
-h = Concatenate()([h, z])
-
-u_mean = Dense(latent_dim)(h)
-u_log_var = Dense(latent_dim)(h)
-
-u = Lambda(second_stage_sampling)([u_mean, u_log_var])
-second_encoder = Model(z, [u, u_mean, u_log_var])
-
-# Decoder
-u_in = Input(shape=(latent_dim, ))
-
-h = Dense(intermediate_dim, activation='relu')(u_in)
-h = Dense(intermediate_dim, activation='relu')(h)
-
-h = Concatenate()([h, u_in])
-
-z_decoded = Dense(latent_dim)(h)
-second_decoder = Model(u_in, z_decoded)
-
-# VAE
-z_reconstructed = second_decoder(u)
-second_vae = Model(z, z_reconstructed)
-
-# Compile model
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.optimizers.schedules import PiecewiseConstantDecay
-steps_per_epoch = 45000 / batch_size
-initial_lr = 1e-3
-lr_schedule = PiecewiseConstantDecay([steps_per_epoch * halve_at_epoch_1, steps_per_epoch * halve_at_epoch_2, steps_per_epoch * halve_at_epoch_3], 
-                                     [initial_lr, initial_lr/10, initial_lr/100, initial_lr/500])
-optimizer = Adam(learning_rate=lr_schedule)
-second_vae.compile(optimizer=Adam(learning_rate=1e-4), loss=second_stage_loss(u_mean, u_log_var), metrics=[cos_sim, second_KL(u_mean, u_log_var)])
-
-# Generate second stage Dataset
-z_train = encoder.predict(x_train)[0]
-z_test = encoder.predict(x_test)[0]
-
-if SECOND_TRAIN:
-    # Fit second stage VAE
-    second_hist = second_vae.fit(z_train, z_train, batch_size=batch_size, epochs=300, verbose=1)
-    second_vae.save_weights('second_twostage_VAE_CIFAR10_fixedgamma.h5')
-else:
-    second_vae.load_weights('drive/MyDrive/Weights/second_twostage_VAE_CIFAR10_fixedgamma.h5')
-
-second_hist = second_vae.fit(z_train, z_train, batch_size=batch_size, epochs=300, verbose=1)
-second_vae.save_weights('second_twostage_VAE_CIFAR10_fixedgamma.h5')
 
 # Generation
 n = 10 #figure with n x n digits
