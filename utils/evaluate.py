@@ -40,14 +40,13 @@ def get_fid(images1, images2):
 	# prepare the inception v3 model
 	model = InceptionV3(include_top=False, pooling='avg', input_shape=(299,299,3), weights='imagenet')
 
-    # calculate activations
     try:
-    	with open('../activations/test_FID.pickle', 'rb') as test_fid:
+        with open('../activations/test_FID.pickle', 'rb') as test_fid:
             act1 = pickle.load(test_fid)
     except:
         act1 = get_inception_activations(images1)
         with open('../activations/test_FID.pickle', 'wb') as test_fid:
-    		pickle.dump(act1, test_fid)
+            pickle.dump(act1, test_fid)
     print('Done stage 1 of 2')
         
     act2 = get_inception_activations(images2)
