@@ -39,7 +39,6 @@ def vae_loss(x_true, x_pred, z_mean, z_log_var):
     L_KL = utils.KL(z_mean, z_log_var)(x_true, x_pred)
 
     return L_rec + gamma * L_KL
-    return loss
 
 # Model Architecture
 # ENCODER
