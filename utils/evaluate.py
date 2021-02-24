@@ -2,22 +2,22 @@ import numpy as np
 import tensorflow as tf
 
 def get_forward_time(model, x_test, batch=100, n_epochs=50):
-	import time
+    import time
 
-	n_samples = 10000
-	nb = n_samples // batch
+    n_samples = 10000
+    nb = n_samples // batch
 
-	times = []
-	for epoch in range(n_epochs):
-	    print('Processing ', epoch + 1, '-th epoch.')
-	    initial_time = time.time()
-	    for i in range(nb):
-	        model.predict(x_test[i * batch : (i+1) * batch])
-	    times.append(time.time() - initial_time)
-	times = np.array(times)
+    times = []
+    for epoch in range(n_epochs):
+        print('Processing ', epoch + 1, '-th epoch.')
+        initial_time = time.time()
+        for i in range(nb):
+            model.predict(x_test[i * batch : (i+1) * batch])
+        times.append(time.time() - initial_time)
+    times = np.array(times)
 
-	print('Forward time: ', np.mean(times), ' +- ', np.std(times))
-	return times
+    print('Forward time: ', np.mean(times), ' +- ', np.std(times))
+    return times
 
 
 def get_inception_activations(inps, batch_size=100):
@@ -27,37 +27,44 @@ def get_inception_activations(inps, batch_size=100):
     for i in range(n_batches):
         inp = inps[i * batch_size:(i + 1) * batch_size]
         inpr = tf.image.resize(inp, (299, 299))
-        act[i * batch_size:(i + 1) * batch_size] = model.predict(inpr,steps=1)
-        
-        print('Processed ' + str((i+1) * batch_size) + ' images.')
+        act[i * batch_size:(i + 1) * batch_size] = model.predict(inpr, steps=1)
+
+        print('Processed ' + str((i + 1) * batch_size) + ' images.')
     return act
 
+
 def get_fid(images1, images2):
-	from scipy.linalg import sqrtm
-	import pickle
-	from keras.applications.inception_v3 import InceptionV3
+    from scipy.linalg import sqrtm
+    from keras.applications.inception_v3 import InceptionV3
 
-	# prepare the inception v3 model
-	model = InceptionV3(include_top=False, pooling='avg', input_shape=(299,299,3), weights='imagenet')
+    # prepare the inception v3 model
+    model = InceptionV3(include_top=False, pooling='avg', input_shape=(299, 299, 3), weights='imagenet')
 
-    try:
-        with open('../activations/test_FID.pickle', 'rb') as test_fid:
-            act1 = pickle.load(test_fid)
-    except:
+    shape = np.shape(images1)[1]
+    if shape == 32:
+        dataset = "cifar10"
+    else:
+        assert (shape == 64)
+        dataset = "celeba"
+    print("Computing FID for {} images".format(dataset))
+
+    # activation for true images is always the same: we just compute it once
+    if os.path.exists(dataset + "_act_mu.npy"):
+        mu1 = np.load(dataset + "_act_mu.npy")
+        sigma1 = np.load(dataset + "_sigma.npy")
+    else:
         act1 = get_inception_activations(images1)
-        with open('../activations/test_FID.pickle', 'wb') as test_fid:
-            pickle.dump(act1, test_fid)
+        mu1, sigma1 = act1.mean(axis=0), np.cov(act1, rowvar=False)
+        np.save(dataset + "_act_mu.npy", mu)
+        np.save(datset + "_act_sigma.npy", sigma)
     print('Done stage 1 of 2')
-        
+
     act2 = get_inception_activations(images2)
+    mu2, sigma2 = act2.mean(axis=0), np.cov(act2, rowvar=False)
     print('Done stage 2 of 2')
 
-    # compute mean and covariance statistics
-    mu1, sigma1 = act1.mean(axis=0), np.cov(act1, rowvar=False)
-    mu2, sigma2 = act2.mean(axis=0), np.cov(act2, rowvar=False)
-
     # calculate sum squared difference between means
-    ssdiff = np.sum((mu1 - mu2)**2.0)
+    ssdiff = np.sum((mu1 - mu2) ** 2.0)
 
     # compute sqrt of product between cov
     covmean = sqrtm(sigma1.dot(sigma2))
@@ -71,9 +78,7 @@ def get_fid(images1, images2):
 
 def count_deactivated_variables(z_var, treshold=0.8):
     z_var = np.mean(z_var, axis=0)
-
     return np.sum(z_var > treshold)
-
 
 def get_loss_variance(x_true, x_recon):
     x_true = np.reshape(x_true, (-1, np.prod(x_true.shape[1:])))
@@ -84,6 +89,7 @@ def get_loss_variance(x_true, x_recon):
 
     return np.abs(var_true - var_recon)
 
+
 def get_var_law(z_mean, z_var):
-	return np.mean(np.var(z_mean, axis=0) + np.mean(z_var, axis=0))
+    return np.mean(np.var(z_mean, axis=0) + np.mean(z_var, axis=0))
 
