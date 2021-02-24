@@ -8,9 +8,6 @@ import tensorflow.keras.backend as K
 
 from utils import utils, load_data, evaluate
 
-from tensorflow.python.framework.ops import disable_eager_execution
-disable_eager_execution()
-
 # Parameters
 input_dim = (32, 32, 3)
 latent_dim = 128
@@ -23,6 +20,9 @@ epochs = 150
 batch_size = 100
 
 gamma = 0.024
+
+# Load data
+x_train, x_test = load_data.load_cifar10()
 
 
 # Model Architecture
@@ -67,10 +67,12 @@ decoder = Model(z_in, x_decoded)
 # VAE
 x_recon = decoder(z)
 vae = Model(x, x_recon)
+vae.add_loss(utils.vae_loss(z_mean, z_log_var, gamma))
 
 # Compile model
 optimizer = get_optimizer(x_train.shape[0] // batch_size)
-vae.compile(optimizer=optimizer, loss=utils.vae_loss(z_mean, z_log_var, gamma), metrics=['mse', utils.KL(z_mean, z_log_var)])
+vae.compile(optimizer=optimizer, loss=None, metrics=['mse', utils.KL(z_mean, z_log_var)])
+
 
 # Fit model
 hist = vae.fit(x_train, x_train, batch_size=batch_size, epochs=epochs, verbose=1)
@@ -385,7 +387,6 @@ x_gen = decoder.predict(z_sample)
 
 fid = get_fid(2 * x_test - 1, 2 * x_gen - 1, use_preprocessed_test=True)
 print('\n FID: %.3f' % fid)
-"""
 #x_gen = vae.predict(x_train[:10000])
 #rec_fid = get_fid(2 * x_test - 1, 2 * x_gen - 1, use_preprocessed_test=True)
 #print('\n Train FID: %.3f' % rec_fid)
