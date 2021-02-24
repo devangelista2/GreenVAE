@@ -38,9 +38,8 @@ def get_optimizer(steps_per_epoch, initial_lr=1e-4, halve_epochs=[80, 120, 150])
 	optimizer = Adam(learning_rate=lr_schedule)
 	return optimizer
 
-
-
-
+def sample_from_GMM(z_density, n):
+    return z_density.sample(n)[0]
 
 
 
