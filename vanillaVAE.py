@@ -5,7 +5,8 @@ import matplotlib.pyplot as plt
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Conv2D, BatchNormalization, ReLU, Dense, Flatten, Reshape, Conv2DTranspose, Lambda
 import tensorflow.keras.backend as K
-from tensorflow.keras.callbacks import Callback
+
+from utils import utils, load_data, evaluate
 
 from tensorflow.python.framework.ops import disable_eager_execution
 disable_eager_execution()
@@ -14,18 +15,14 @@ disable_eager_execution()
 input_dim = (32, 32, 3)
 latent_dim = 128
 
-n_ch = input_dim[-1]
+e_layers = 4
+d_layers = 2
+base_dim = 128
 
 epochs = 150
 batch_size = 100
 
 gamma = 0.024
-
-e_layers = 4
-d_layers = 2
-base_dim = 128
-
-TRAIN = False
 
 
 # Model Architecture
@@ -48,30 +45,32 @@ z = Lambda(sampling)([z_mean, z_log_var])
 
 encoder = Model(x, [z, z_mean, z_log_var])
 
-
 # DECODER
 z_in = Input(shape=(latent_dim, ))
 
-h = Dense(8 * 8 * n_final_ch)(z_in)
-h = Reshape((8, 8, n_final_ch))(h)
+d = input_dim[0] // (2 ** (e_layers - d_layers))
+
+h = Dense(d * d * n_final_ch)(z_in)
+h = Reshape((d, d, n_final_ch))(h)
 h = BatchNormalization()(h)
 h = ReLU()(h)
 
 for i in range(d_layers):
+
     h = Conv2DTranspose(n_final_ch * 2 ** (i+1), 4, strides=(2, 2), padding='same')(h)
     h = BatchNormalization()(h)
     h = ReLU()(h)
 
-x_decoded = Conv2DTranspose(n_ch, 4, strides=(1, 1), padding='same', activation='sigmoid')(h)
+x_decoded = Conv2DTranspose(input_dim[-1], 4, strides=(1, 1), padding='same', activation='sigmoid')(h)
 decoder = Model(z_in, x_decoded)
 
 # VAE
 x_recon = decoder(z)
 vae = Model(x, x_recon)
 
-
 # Compile model
-vae.compile(optimizer=optimizer, loss=vae_loss(z_mean, z_log_var), metrics=['mse', KL(z_mean, z_log_var)])
+optimizer = get_optimizer(x_train.shape[0] // batch_size)
+vae.compile(optimizer=optimizer, loss=utils.vae_loss(z_mean, z_log_var, gamma), metrics=['mse', utils.KL(z_mean, z_log_var)])
 
 # Fit model
 hist = vae.fit(x_train, x_train, batch_size=batch_size, epochs=epochs, verbose=1)
@@ -81,25 +80,19 @@ hist = vae.fit(x_train, x_train, batch_size=batch_size, epochs=epochs, verbose=1
 # SHOW THE RESULTS
 ########################################################################################################################
 
-_, z_mean, z_log_var = encoder.predict(x_test, batch_size=batch_size)
-z_var = np.exp(z_log_var)
-n_deact = count_deactivated_variables(z_var)
-print('We have a total of ', latent_dim, ' latent variables. ', count_deactivated_variables(z_var), ' of them are deactivated')
+SHOW_METRICS = False
+if SHOW_METRICS:
+    _, z_mean, z_log_var = encoder.predict(x_test)
+    z_var = np.exp(z_log_var)
 
-var_law = get_var_law(z_mean, z_var)
-print('Variance law has a value of: ', var_law)
+    n_deact = evaluate.count_deactivated_variables(z_var)
+    print('We have a total of ', latent_dim, ' latent variables. ', count_deactivated_variables(z_var), ' of them are deactivated')
 
-x_recon = vae.predict(x_train, batch_size=batch_size)
-print('We lost ', loss_variance(x_test, x_recon), 'Variance of the original data')
+    var_law = evaluate.get_var_law(z_mean, z_var)
+    print('Variance law has a value of: ', var_law)
 
-
-
-
-
-
-
-
-
+    x_recon = vae.predict(x_train)
+    print('We lost ', evaluate.loss_variance(x_test, x_recon), 'Variance of the original data')
 
 
 
