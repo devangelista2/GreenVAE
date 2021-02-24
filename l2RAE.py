@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Conv2D, BatchNormalization, ReLU, Dense, Flatten, Reshape, Conv2DTranspose, Lambda
 import tensorflow.keras.backend as K
+from keras.regularizers import l2
 
 from utils import utils, load_data, evaluate
 import two_stage
@@ -29,16 +30,17 @@ base_dim = 128
 epochs = 150
 batch_size = 100
 
-gamma = 0.024
+gamma = 1e-3
+lamb  = 1e-6
 
 
 # Loss function
-def vae_loss(x_true, x_pred, z_mean, z_log_var):
+def rae_loss(x_true, x_pred, z):
 
     L_rec = utils.recon(x_true, x_pred)
-    L_KL = utils.KL(z_mean, z_log_var)(x_true, x_pred)
+    L_rae = K.mean(0.5 * K.sum(K.square(z), axis=-1))
 
-    return L_rec + gamma * L_KL
+    return L_rec + gamma * L_rae
 
 # Model Architecture
 # ENCODER
@@ -54,9 +56,7 @@ for i in range(e_layers):
 n_final_ch = K.int_shape(h)[-1]
 h = Flatten()(h)
 
-z_mean = Dense(latent_dim)(h)
-z_log_var = Dense(latent_dim)(h)
-z = Lambda(utils.sampling)([z_mean, z_log_var])
+z = Dense(latent_dim)(h)
 
 encoder = Model(x, [z, z_mean, z_log_var])
 
@@ -72,7 +72,7 @@ h = ReLU()(h)
 
 for i in range(d_layers):
 
-    h = Conv2DTranspose(n_final_ch * 2 ** (i+1), 4, strides=(2, 2), padding='same')(h)
+    h = Conv2DTranspose(n_final_ch * 2 ** (i+1), 4, strides=(2, 2), padding='same', kernel_regularizer=l2(lamb))(h)
     h = BatchNormalization()(h)
     h = ReLU()(h)
 
@@ -82,21 +82,21 @@ decoder = Model(z_in, x_decoded)
 # VAE
 x_recon = decoder(z)
 vae = Model(x, x_recon)
-vae.add_loss(vae_loss(x, x_recon, z_mean, z_log_var))
+vae.add_loss(vae_loss(x, x_recon, z))
 
 # Compile model
 optimizer = utils.get_optimizer(x_train.shape[0] // batch_size)
-vae.compile(optimizer=optimizer, loss=None, metrics=['mse', utils.KL(z_mean, z_log_var)])
+vae.compile(optimizer=optimizer, loss=None, metrics=['mse'])
 
 # Fit model
 hist = vae.fit(x_train, None, batch_size=batch_size, epochs=epochs, verbose=1)
-vae.save_weights('saved_weights/vanillaVAE_' + data +'.h5')
+vae.save_weights('saved_weights/l2RAE_' + data +'.h5')
 
 
 SECOND_STAGE = True
 if SECOND_STAGE:
-    z_train = encoder.predict(x_train)[0]
-    z_test  = encoder.predict(x_test)[0]
+    z_train = encoder.predict(x_train)
+    z_test  = encoder.predict(x_test)
 
     second_vae, second_encoder, second_decoder = two_stage.get_second_stage(latent_dim)
 
@@ -105,7 +105,7 @@ if SECOND_STAGE:
     second_vae.compile(optimizer=optimizer, loss=None, metrics=[utils.cos_sim])
 
     second_vae.fit(z_train, None, batch_size=batch_size, epochs=epochs)
-    second_vae.save_weights('saved_weights/secondstage_vanillaVAE_' + data +'.h5')
+    second_vae.save_weights('saved_weights/secondstage_l2RAE_' + data +'.h5')
 
 GMM = False
 if GMM:
@@ -113,6 +113,11 @@ if GMM:
 
     z_density = GaussianMixture(n_components=10, max_iter=100)
     z_density.fit(z_train)
+else:
+    from scipy.stats import norm
+
+    mean, std = norm.fit(z_train) # z_train is fitted to a gaussian N(mean, std)
+    print("Learned Gaussian")
 
 ########################################################################################################################
 # SHOW THE RESULTS
@@ -120,15 +125,6 @@ if GMM:
 
 SHOW_METRICS = False
 if SHOW_METRICS:
-    _, z_mean, z_log_var = encoder.predict(x_test)
-    z_var = np.exp(z_log_var)
-
-    n_deact = evaluate.count_deactivated_variables(z_var)
-    print('We have a total of ', latent_dim, ' latent variables. ', n_deact, ' of them are deactivated')
-
-    var_law = evaluate.get_var_law(z_mean, z_var)
-    print('Variance law has a value of: ', var_law)
-
     x_recon = vae.predict(x_train)
     print('We lost ', evaluate.loss_variance(x_test, x_recon), 'Variance of the original data')
 
@@ -140,7 +136,7 @@ if SHOW_GEN_FID:
     elif GMM:
         z = utils.sample_from_GMM(z_density, 10000)
     else:
-        z = np.random.normal(0, 1, (10000, latent_dim))
+        z = np.random.normal(mean, std, (10000, latent_dim))
     x_gen = decoder.predict(z)
 
     gen_fid = evaluate.get_fid(x_test[:10000], x_gen)
@@ -152,10 +148,6 @@ if SHOW_REC_FID:
 
     rec_fid = evaluate.get_fid(x_test[:10000], x_recon)
     print('REC FID:', rec_fid)
-
-
-
-
 
 
 

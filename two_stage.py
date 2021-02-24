@@ -12,14 +12,12 @@ def get_second_stage(input_dim, gamma=5e-3, intermediate_dim=1536):
     latent_dim = input_dim
 
     # Loss
-    def second_stage_loss(u_mean, u_log_var):
-        def loss(x_true, x_pred):
+    def second_stage_loss(x_true, x_pred, u_mean, u_log_var):
 
-            L_rec = utils.cos_sim(x_true, x_pred)
-            L_KL = utils.KL(u_mean, u_log_var)(x_true, x_pred)
+        L_rec = utils.cos_sim(x_true, x_pred)
+        L_KL = utils.KL(u_mean, u_log_var)(x_true, x_pred)
 
-            return L_rec + gamma * L_KL
-        return loss
+        return L_rec + gamma * L_KL
 
     # Encoder
     z = Input(shape=(input_dim, ))
@@ -49,7 +47,7 @@ def get_second_stage(input_dim, gamma=5e-3, intermediate_dim=1536):
     # VAE
     z_reconstructed = second_decoder(u)
     second_vae = Model(z, z_reconstructed)
-    second_vae.add_loss(second_stage_loss(u_mean, u_log_var))
+    second_vae.add_loss(second_stage_loss(z, z_decoded, u_mean, u_log_var))
 
     return second_vae, second_encoder, second_decoder
 
