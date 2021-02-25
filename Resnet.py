@@ -147,6 +147,7 @@ def load_celeba():
     return (x_train / 255.,x_test / 255.)
 
 x_train, x_test = load_celeba()
+x_train, x_test = load_data/load_celeba()
 
 optimizer = Adam(learning_rate=.00001)
 vae.compile(optimizer=optimizer,loss=None,metrics=['mse'])
@@ -200,7 +201,7 @@ for epoch in range(epochs):
 vae.save_weights('saved_weights/' + weights_filename)
 
 # Second stage and GMM
-SECOND_STAGE = False
+SECOND_STAGE = True
 latent_dim = 64
 
 if SECOND_STAGE:
@@ -213,9 +214,9 @@ if SECOND_STAGE:
     optimizer = utils.get_optimizer(z_train.shape[0] // batch_size, initial_lr=1e-3)
     second_vae.compile(optimizer=optimizer, loss=None, metrics=[utils.cos_sim])
 
-    weights_filename2 = 'two_stage_64_3SB_celeba_bis.hdf5'
+    weights_filename2 = 'two_stage_64_3SB_celeba_second.hdf5'
     #second_vae.load_weights('saved_weights/' + weights_filename2)
-    second_vae.fit(z_train, None, batch_size=batch_size, epochs=epochs)
+    #second_vae.fit(z_train, None, batch_size=batch_size, epochs=epochs)
     second_vae.save_weights('saved_weights/' + weights_filename2)
 
 # GMM
