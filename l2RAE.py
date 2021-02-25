@@ -96,7 +96,6 @@ vae.save_weights('saved_weights/l2RAE_' + data +'.h5')
 SECOND_STAGE = True
 if SECOND_STAGE:
     z_train = encoder.predict(x_train)
-    z_test  = encoder.predict(x_test)
 
     second_vae, second_encoder, second_decoder = two_stage.get_second_stage(latent_dim)
 
