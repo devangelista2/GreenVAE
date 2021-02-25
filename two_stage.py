@@ -30,7 +30,7 @@ def get_second_stage(input_dim, gamma=5e-3, intermediate_dim=1536):
     u_mean = Dense(latent_dim)(h)
     u_log_var = Dense(latent_dim)(h)
 
-    u = Lambda(second_stage_sampling)([u_mean, u_log_var])
+    u = Lambda(utils.sampling)([u_mean, u_log_var])
     second_encoder = Model(z, [u, u_mean, u_log_var])
 
     # Decoder
