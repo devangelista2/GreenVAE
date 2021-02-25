@@ -1,5 +1,10 @@
 import numpy as np
+import os
 import tensorflow as tf
+from keras.applications.inception_v3 import InceptionV3
+
+# prepare the inception v3 model
+model = InceptionV3(include_top=False, pooling='avg', input_shape=(299, 299, 3), weights='imagenet')
 
 def get_forward_time(model, x_test, batch=100, n_epochs=50):
     import time
@@ -27,6 +32,7 @@ def get_inception_activations(inps, batch_size=100):
     for i in range(n_batches):
         inp = inps[i * batch_size:(i + 1) * batch_size]
         inpr = tf.image.resize(inp, (299, 299))
+        inpr = inpr*2 - 1 #resize images in the interval [-1.1]
         act[i * batch_size:(i + 1) * batch_size] = model.predict(inpr, steps=1)
 
         print('Processed ' + str((i + 1) * batch_size) + ' images.')
@@ -35,10 +41,6 @@ def get_inception_activations(inps, batch_size=100):
 
 def get_fid(images1, images2):
     from scipy.linalg import sqrtm
-    from keras.applications.inception_v3 import InceptionV3
-
-    # prepare the inception v3 model
-    model = InceptionV3(include_top=False, pooling='avg', input_shape=(299, 299, 3), weights='imagenet')
 
     shape = np.shape(images1)[1]
     if shape == 32:
@@ -51,12 +53,12 @@ def get_fid(images1, images2):
     # activation for true images is always the same: we just compute it once
     if os.path.exists(dataset + "_act_mu.npy"):
         mu1 = np.load(dataset + "_act_mu.npy")
-        sigma1 = np.load(dataset + "_sigma.npy")
+        sigma1 = np.load(dataset + "_act_sigma.npy")
     else:
         act1 = get_inception_activations(images1)
         mu1, sigma1 = act1.mean(axis=0), np.cov(act1, rowvar=False)
-        np.save(dataset + "_act_mu.npy", mu)
-        np.save(datset + "_act_sigma.npy", sigma)
+        np.save(dataset + "_act_mu.npy", mu1)
+        np.save(dataset + "_act_sigma.npy", sigma1)
     print('Done stage 1 of 2')
 
     act2 = get_inception_activations(images2)
@@ -88,7 +90,6 @@ def get_loss_variance(x_true, x_recon):
     var_recon = np.mean(np.var(x_recon, axis=1), axis=0)
 
     return np.abs(var_true - var_recon)
-
 
 def get_var_law(z_mean, z_var):
     return np.mean(np.var(z_mean, axis=0) + np.mean(z_var, axis=0))
