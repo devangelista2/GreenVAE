@@ -47,7 +47,7 @@ def get_second_stage(input_dim, gamma=5e-3, intermediate_dim=1536):
     # VAE
     z_reconstructed = second_decoder(u)
     second_vae = Model(z, z_reconstructed)
-    second_vae.add_loss(second_stage_loss(z, z_decoded, u_mean, u_log_var))
+    second_vae.add_loss(second_stage_loss(z, z_reconstructed, u_mean, u_log_var))
 
     return second_vae, second_encoder, second_decoder
 
