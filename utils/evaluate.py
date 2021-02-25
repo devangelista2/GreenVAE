@@ -1,7 +1,7 @@
 import numpy as np
 import os
 import tensorflow as tf
-from keras.applications.inception_v3 import InceptionV3
+from tensorflow.keras.applications.inception_v3 import InceptionV3
 
 # prepare the inception v3 model
 model = InceptionV3(include_top=False, pooling='avg', input_shape=(299, 299, 3), weights='imagenet')
