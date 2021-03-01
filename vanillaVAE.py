@@ -93,7 +93,7 @@ hist = vae.fit(x_train, None, batch_size=batch_size, epochs=epochs, verbose=1)
 vae.save_weights('saved_weights/vanillaVAE_' + data +'.h5')
 
 
-SECOND_STAGE = True
+SECOND_STAGE = False
 if SECOND_STAGE:
     z_train = encoder.predict(x_train)[0]
     z_test  = encoder.predict(x_test)[0]
